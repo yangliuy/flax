@@ -127,6 +127,11 @@ class DenseGeneral(base.Module):
     return out
 
 
+def dense(
+    inputs, features, bias, dtype=jnp.float32, precision=None,
+    kernel_init=default_kernel_init, bias_init=initializers.zero):
+  return Dense(features, bias, dtype, precision, kernel_init, bias_init)(inputs)
+
 @dataclass
 class Dense(base.Module):
   """A linear transformation applied over the last dimension of the input."""
