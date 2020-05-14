@@ -17,6 +17,9 @@
 
 from collections.abc import Iterable  # pylint: disable=g-importing-member
 
+from dataclasses import dataclass
+from typing import Any
+
 from . import base
 from . import initializers
 
@@ -124,31 +127,15 @@ class DenseGeneral(base.Module):
     return out
 
 
+@dataclass
 class Dense(base.Module):
   """A linear transformation applied over the last dimension of the input."""
-  def __init__(self,
-               features,
-               bias=True,
-               dtype=jnp.float32,
-               precision=None,
-               kernel_init=default_kernel_init,
-               bias_init=initializers.zeros):
-    """
-    Args:
-      features: the number of output features.
-      bias: whether to add a bias to the output (default: True).
-      dtype: the dtype of the computation (default: float32).
-      precision: numerical precision of the computation see `jax.lax.Precision`
-        for details.
-      kernel_init: initializer function for the weight matrix.
-      bias_init: initializer function for the bias.
-    """
-    self.features = features
-    self.bias = bias
-    self.dtype = dtype
-    self.precision = precision
-    self.kernel_init = kernel_init
-    self.bias_init = bias_init
+  features: int
+  bias: bool = True
+  dtype: Any = jnp.float32
+  precision: Any = None
+  kernel_init: Any = default_kernel_init
+  bias_init: Any = initializers.zeros
 
   def apply(self, inputs):
     """Applies a linear transformation to the inputs along the last dimension.
