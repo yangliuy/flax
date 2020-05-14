@@ -1,7 +1,18 @@
 # Flax Examples
 
 This folder contains a collection of examples of implementations of various architectures and training procedures.
-In collecting these examples, we try to cover all key areas in machine learning, without having too much duplication.
+
+Each examples is designed to be self-contained and easily forkable, while reproducing "key results" in different areas of machine learning. Official Flax examples come with significant maintenance expectations, including:
+* Tested benchmarks on single-GPU, multi-GPU, and TPU configurations (XCXC see examples/imagenet/README as an example)
+* Unit tests (e.g. that one training step succeeds)
+* Adherence to Flax best practices and code updates as those best practices evolve
+* An "owner" who is a member of the Flax core team that keeps the example up-to-date
+* A minimal implementation that implements a single model on a single dataset -- if users
+  want to configure them differently, they can fork the example.
+
+In addition to the curated list of official Flax examples, there is a growing community
+of people using Flax to build new types of machine learning models. We are happy
+to showcase ... xcxc models ... 
 
 NOTE: If you have an idea for an example, please file an issue first!
 

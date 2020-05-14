@@ -40,19 +40,19 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_float(
     'learning_rate', default=0.1,
-    help=('The learning rate for the momentum optimizer.'))
+    help='The learning rate for the momentum optimizer.')
 
 flags.DEFINE_float(
     'momentum', default=0.9,
-    help=('The decay rate used for the momentum optimizer.'))
+    help='The decay rate used for the momentum optimizer.')
 
 flags.DEFINE_integer(
     'batch_size', default=128,
-    help=('Batch size for training.'))
+    help='Batch size for training.')
 
 flags.DEFINE_integer(
     'num_epochs', default=10,
-    help=('Number of training epochs.'))
+    help='Number of training epochs.')
 
 
 
@@ -60,16 +60,16 @@ class CNN(nn.Module):
   """A simple CNN model."""
 
   def apply(self, x):
-    x = nn.Conv(x, features=32, kernel_size=(3, 3))
+    x = nn.Conv(features=32, kernel_size=(3, 3)).apply(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = nn.Conv(x, features=64, kernel_size=(3, 3))
+    x = nn.Conv(features=64, kernel_size=(3, 3)).apply(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
     x = x.reshape((x.shape[0], -1))  # flatten
-    x = nn.Dense(x, features=256)
+    x = nn.Dense(features=256).apply(x)
     x = nn.relu(x)
-    x = nn.Dense(x, features=10)
+    x = nn.Dense(features=10).apply(x)
     x = nn.log_softmax(x)
     return x
 

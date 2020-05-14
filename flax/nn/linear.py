@@ -126,19 +126,15 @@ class DenseGeneral(base.Module):
 
 class Dense(base.Module):
   """A linear transformation applied over the last dimension of the input."""
-
-  def apply(self,
-            inputs,
-            features,
-            bias=True,
-            dtype=jnp.float32,
-            precision=None,
-            kernel_init=default_kernel_init,
-            bias_init=initializers.zeros):
-    """Applies a linear transformation to the inputs along the last dimension.
-
+  def __init__(self,
+               features,
+               bias=True,
+               dtype=jnp.float32,
+               precision=None,
+               kernel_init=default_kernel_init,
+               bias_init=initializers.zeros):
+    """
     Args:
-      inputs: The nd-array to be transformed.
       features: the number of output features.
       bias: whether to add a bias to the output (default: True).
       dtype: the dtype of the computation (default: float32).
@@ -146,18 +142,31 @@ class Dense(base.Module):
         for details.
       kernel_init: initializer function for the weight matrix.
       bias_init: initializer function for the bias.
+    """
+    self.features = features
+    self.bias = bias
+    self.dtype = dtype
+    self.precision = precision
+    self.kernel_init = kernel_init
+    self.bias_init = bias_init
+
+  def apply(self, inputs):
+    """Applies a linear transformation to the inputs along the last dimension.
+
+    Args:
+      inputs: The nd-array to be transformed.
     Returns:
       The transformed input.
     """
-    inputs = jnp.asarray(inputs, dtype)
-    kernel = self.param('kernel', (inputs.shape[-1], features), kernel_init)
-    kernel = jnp.asarray(kernel, dtype)
+    inputs = jnp.asarray(inputs, self.dtype)
+    kernel = self.param('kernel', (inputs.shape[-1], self.features), self.kernel_init)
+    kernel = jnp.asarray(kernel, self.dtype)
     y = lax.dot_general(inputs, kernel,
                         (((inputs.ndim - 1,), (0,)), ((), ())),
-                        precision=precision)
-    if bias:
-      bias = self.param('bias', (features,), bias_init)
-      bias = jnp.asarray(bias, dtype)
+                        precision=self.precision)
+    if self.bias:
+      bias = self.param('bias', (self.features,), self.bias_init)
+      bias = jnp.asarray(self.bias, self.dtype)
       y = y + bias
     return y
 
@@ -173,78 +182,67 @@ def _conv_dimension_numbers(input_shape):
 
 class Conv(base.Module):
   """Convolution Module wrapping lax.conv_general_dilated."""
+  def __init__(self,
+               features,
+               kernel_size,
+               strides=None,
+               padding='SAME',
+               input_dilation=None,
+               kernel_dilation=None,
+               feature_group_count=1,
+               bias=True,
+               dtype=jnp.float32,
+               precision=None,
+               kernel_init=default_kernel_init,
+               bias_init=initializers.zeros):
+    self.features = features
+    self.kernel_size = kernel_size
+    self.strides = strides
+    self.padding = padding
+    self.input_dilation = input_dilation
+    self.kernel_dilation = kernel_dilation
+    self.feature_group_count = feature_group_count
+    self.bias = bias
+    self.dtype = dtype
+    self.precision = precision
+    self.kernel_init = kernel_init
+    self.bias_init = bias_init
 
-  def apply(self,
-            inputs,
-            features,
-            kernel_size,
-            strides=None,
-            padding='SAME',
-            input_dilation=None,
-            kernel_dilation=None,
-            feature_group_count=1,
-            bias=True,
-            dtype=jnp.float32,
-            precision=None,
-            kernel_init=default_kernel_init,
-            bias_init=initializers.zeros):
+  def apply(self, inputs):
     """Applies a convolution to the inputs.
 
     Args:
       inputs: input data with dimensions (batch, spatial_dims..., features).
-      features: number of convolution filters.
-      kernel_size: shape of the convolutional kernel.
-      strides: a sequence of `n` integers, representing the inter-window
-        strides.
-      padding: either the string `'SAME'`, the string `'VALID'`, or a sequence
-        of `n` `(low, high)` integer pairs that give the padding to apply before
-        and after each spatial dimension.
-      input_dilation: `None`, or a sequence of `n` integers, giving the
-        dilation factor to apply in each spatial dimension of `inputs`.
-        Convolution with input dilation `d` is equivalent to transposed
-        convolution with stride `d`.
-      kernel_dilation: `None`, or a sequence of `n` integers, giving the
-        dilation factor to apply in each spatial dimension of the convolution
-        kernel. Convolution with kernel dilation is also known as 'atrous
-        convolution'.
-      feature_group_count: integer, default 1. If specified divides the input
-        features into groups.
-      bias: whether to add a bias to the output (default: True).
-      dtype: the dtype of the computation (default: float32).
-      precision: numerical precision of the computation see `jax.lax.Precision`
-        for details.
-      kernel_init: initializer for the convolutional kernel.
-      bias_init: initializer for the bias.
     Returns:
       The convolved data.
     """
 
-    inputs = jnp.asarray(inputs, dtype)
+    inputs = jnp.asarray(inputs, self.dtype)
 
-    if strides is None:
-      strides = (1,) * (inputs.ndim - 2)
+    if self.strides is None:
+      self.strides = (1,) * (inputs.ndim - 2)
 
     in_features = inputs.shape[-1]
-    assert in_features % feature_group_count == 0
-    kernel_shape = kernel_size + (in_features // feature_group_count, features)
-    kernel = self.param('kernel', kernel_shape, kernel_init)
-    kernel = jnp.asarray(kernel, dtype)
+    assert in_features % self.feature_group_count == 0
+    kernel_shape = self.kernel_size + (in_features // self.feature_group_count, self.features)
+    kernel = self.param('kernel', kernel_shape, self.kernel_init)
+    kernel = jnp.asarray(kernel, self.dtype)
 
     dimension_numbers = _conv_dimension_numbers(inputs.shape)
     y = lax.conv_general_dilated(
         inputs,
         kernel,
-        strides,
-        padding,
-        lhs_dilation=input_dilation,
-        rhs_dilation=kernel_dilation,
+        self.strides,
+        self.padding,
+        lhs_dilation=self.input_dilation,
+        rhs_dilation=self.kernel_dilation,
         dimension_numbers=dimension_numbers,
-        feature_group_count=feature_group_count,
-        precision=precision)
+        feature_group_count=self.feature_group_count,
+        precision=self.precision)
 
-    if bias:
-      bias = self.param('bias', (features,), bias_init)
-      bias = jnp.asarray(bias, dtype)
+    if self.bias:
+      bias = self.param('bias', (self.features,), self.bias_init)
+      bias = jnp.asarray(bias, self.dtype)
       y = y + bias
     return y
 

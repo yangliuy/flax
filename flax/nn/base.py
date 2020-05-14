@@ -250,6 +250,7 @@ class Module(metaclass=_ModuleMeta):
 
   def __new__(cls, *args, name=None, **kwargs):
     if not _module_stack:
+      # xcxc
       raise ValueError('A Module should only be instantiated directly inside'
                        ' another module.')
     parent = cls._get_construction_frame()
@@ -273,10 +274,9 @@ class Module(metaclass=_ModuleMeta):
       rng = None
     frame = _ModuleFrame(name, parent=parent, rng=rng, params=params,
                          transparent=cls._is_transparent())
-    with cls._with_instance(frame) as instance:
-      y = instance.apply(*args, **apply_kwargs)
-      _track_outputs(y)
-    return y
+    instance = object.__new__(cls)
+    instance._frame = frame  # pylint: disable=protected-access
+    return instance
 
   @abc.abstractmethod
   def apply(self, *args, **kwargs):
@@ -323,7 +323,7 @@ class Module(metaclass=_ModuleMeta):
     SharedModule.__name__ = class_.__name__
     SharedModule.__qualname__ = class_.__qualname__
 
-    return SharedModule
+    return SharedModule()
 
   @classmethod
   def _get_construction_frame(cls):
@@ -490,6 +490,7 @@ class Module(metaclass=_ModuleMeta):
     """
     stochastic_rng = None
     try:
+#      import pdb; pdb.set_trace()
       stochastic_rng = stochastic.make_rng()
     except ValueError:
       # Either there is no stochastic scope or the current
