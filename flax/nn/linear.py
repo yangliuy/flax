@@ -129,9 +129,11 @@ class DenseGeneral(base.Module):
 
 def dense(
     inputs, features, bias, dtype=jnp.float32, precision=None,
-    kernel_init=default_kernel_init, bias_init=initializers.zero):
+    kernel_init=default_kernel_init, bias_init=initializers.zeros):
   return Dense(features, bias, dtype, precision, kernel_init, bias_init)(inputs)
 
+# TODO: Can we make it such that extending from base.Module automatically
+# adds dataclass?
 @dataclass
 class Dense(base.Module):
   """A linear transformation applied over the last dimension of the input."""
@@ -142,7 +144,7 @@ class Dense(base.Module):
   kernel_init: Any = default_kernel_init
   bias_init: Any = initializers.zeros
 
-  def apply(self, inputs):
+  def __call__(self, inputs):
     """Applies a linear transformation to the inputs along the last dimension.
 
     Args:
@@ -200,7 +202,7 @@ class Conv(base.Module):
     self.kernel_init = kernel_init
     self.bias_init = bias_init
 
-  def apply(self, inputs):
+  def __call__(self, inputs):
     """Applies a convolution to the inputs.
 
     Args:

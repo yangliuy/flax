@@ -1,10 +1,12 @@
+# Lint as: python3
+
 # Copyright 2020 The Flax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """NN base modules for JAX."""
 
 import abc
@@ -196,46 +197,6 @@ MODULE_CLASSMETHODS = [
 ]
 
 
-class _ModuleMeta(abc.ABCMeta):
-  """Meta class for automatically setting the doc of Modules."""
-
-  def __init__(cls, name, bases, attrs):
-    super(_ModuleMeta, cls).__init__(name, bases, attrs)
-    apply_fn = cls.apply
-    apply_doc = apply_fn.__doc__
-    cls.__doc__ = apply_doc
-    apply_params = _fn_parameters(apply_fn)
-    cls.__signature__ = inspect.signature(cls).replace(
-        parameters=apply_params[1:])
-
-    if not bases:
-      return  # skip method signature overides for Module class.
-
-    def wrap_special_method(name):
-      """override the signature and docstring for one of Module's classmethods."""
-      orig_fn = getattr(Module, name)
-
-      @functools.wraps(orig_fn)
-      def wrapper(class_, *args, **kwargs):
-        super_fn = getattr(super(cls, class_), name)
-        return super_fn(*args, **kwargs)
-      wrapper.__doc__ = f'''{orig_fn.__doc__}
-
-      Apply docstring:
-
-      {apply_doc}
-      '''
-      base_params = tuple(x for x in _fn_parameters(orig_fn)
-                          if x.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD)
-      new_params = base_params + apply_params[1:]
-      wrapper.__signature__ = inspect.signature(orig_fn).replace(
-          parameters=new_params)
-      setattr(cls, name, classmethod(wrapper))
-
-    for name in MODULE_CLASSMETHODS:
-      wrap_special_method(name)
-
-
 def _fold_in_str(rng, data):
   """Fold a string into a jax.random.PRNGKey using its SHA-1 hash."""
   m = hashlib.sha1()
@@ -245,45 +206,41 @@ def _fold_in_str(rng, data):
   return random.fold_in(rng, hash_int)
 
 
-class Module(metaclass=_ModuleMeta):
+class Module:
   """Functional modules."""
 
   def __new__(cls, *args, name=None, **kwargs):
-    if not _module_stack:
-      # xcxc
-      raise ValueError('A Module should only be instantiated directly inside'
-                       ' another module.')
-    parent = cls._get_construction_frame()
-    apply_kwargs = cls._extend_kwargs(kwargs)
-    if name is None:
-      name = cls._default_name()
-    elif cls._is_shared():
-      raise ValueError('Cannot override the name of a shared module')
-    if name is None:  # also no default name
-      name = cls.__name__ + '_' + parent.create_name()
-    cls._check_name(name, parent)
-    if parent.is_init and name not in parent.params:
-      rng = _fold_in_str(parent.rng, name)
-      params = {}
-      parent.params[name] = params
-    else:  # apply
-      if name not in parent.params:
-        raise ValueError(f'No module named {name} was created during'
-                         ' initialization.')
-      params = parent.params[name]
-      rng = None
-    frame = _ModuleFrame(name, parent=parent, rng=rng, params=params,
-                         transparent=cls._is_transparent())
-    instance = object.__new__(cls)
-    instance._frame = frame  # pylint: disable=protected-access
-    return instance
-
-  @abc.abstractmethod
-  def apply(self, *args, **kwargs):
-    pass
+    if _module_stack:
+      parent = cls._get_construction_frame()
+      apply_kwargs = cls._extend_kwargs(kwargs)
+      if name is None:
+        name = cls._default_name()
+      elif cls._is_shared():
+        raise ValueError('Cannot override the name of a shared module')
+      if name is None:  # also no default name
+        name = cls.__name__ + '_' + parent.create_name()
+      cls._check_name(name, parent)
+      if parent.is_init and name not in parent.params:
+        rng = _fold_in_str(parent.rng, name)
+        params = {}
+        parent.params[name] = params
+      else:  # apply
+        if name not in parent.params:
+          raise ValueError(f'No module named {name} was created during'
+                          ' initialization.')
+        params = parent.params[name]
+        rng = None
+      frame = _ModuleFrame(name, parent=parent, rng=rng, params=params,
+                          transparent=cls._is_transparent())
+      instance = object.__new__(cls)
+      instance._frame = frame  # pylint: disable=protected-access
+      return instance
+    else:
+      return object.__new__(cls)
 
   @classmethod
   def shared(class_, *, name=None, **kwargs):
+    # TODO: make deprecated and call constructor
     """Partially applies a module and shared parameters for each call.
 
     Args:
@@ -462,7 +419,7 @@ class Module(metaclass=_ModuleMeta):
     frame = _ModuleFrame(name, rng=_rng, parent=parent,
                          transparent=cls._is_transparent())
     with cls._with_instance(frame) as instance:
-      y = instance.apply(*args, **kwargs)
+      y = instance(*args, **kwargs)
       _track_outputs(y)
     return y, cls._post_process_params(frame.params)
 
@@ -481,16 +438,9 @@ class Module(metaclass=_ModuleMeta):
       **kwargs: keyword arguments passed to the module's apply function
     Returns:
       A pair consisting of the model output and the initialized parameters
-    Example:
-      ```
-      input_shape = (batch_size, image_size, image_size, 3)
-      model_output, initial_params = model.init_by_shape(jax.random.PRNGKey(0),
-                                      input_specs=[(input_shape, jnp.float32)])
-      ```
     """
     stochastic_rng = None
     try:
-#      import pdb; pdb.set_trace()
       stochastic_rng = stochastic.make_rng()
     except ValueError:
       # Either there is no stochastic scope or the current
@@ -551,7 +501,10 @@ class Module(metaclass=_ModuleMeta):
     Returns:
       The value of the parameter.
     """
-    frame = self._frame
+    if _module_stack:
+      frame = _module_stack[-1]
+    else:
+      raise ValueError("Must call `param` within `nn.init` or `nn.apply`")
     if frame.is_init:
       if name in frame.params:
         raise ValueError(
@@ -659,7 +612,7 @@ class Module(metaclass=_ModuleMeta):
       # a module with this name already exists. Check validity of sharing
       if shared != parent.shared[name]:
         raise ValueError(f'The name "{name}" is used for both a shared'
-                         ' and unshared module.')
+                         'and unshared module.')
       if not parent.shared[name]:
         raise ValueError(f'A module with named "{name}" already exists.')
     parent.shared[name] = shared
@@ -687,6 +640,44 @@ class Module(metaclass=_ModuleMeta):
   @classmethod
   def _default_name(cls):
     return None
+
+
+def init(fun, _rng, *args, with_output=False, name=None, **kwargs):
+  """Initialize the module parameters.
+
+  Args:
+    _rng: the random number generator used to initialize parameters.
+    *args: arguments passed to the 
+    name: name of this module.
+    **kwargs: keyword arguments passed to the module's apply function
+  Returns:
+    A pair consisting of the model output and the initialized parameters
+  """
+  if _module_stack:
+    parent = _module_stack[-1]
+  else:
+    parent = None
+
+  frame = _ModuleFrame(name=None, rng=_rng, parent=parent)
+  with _module_stack.frame(frame):
+    y = fun(*args, **kwargs)
+  if with_output:
+    return frame.params, y
+  else:
+    return frame.params
+
+
+def apply(fun, params, *args, name=None, **kwargs):
+  """Apply a module with given parameters
+  """
+  if _module_stack:
+    parent = _module_stack[-1]
+  else:
+    parent = None
+
+  frame = _ModuleFrame(name=None, params=params, parent=parent)
+  with _module_stack.frame(frame):
+    return fun(*args, **kwargs)
 
 
 def module(fun):
@@ -944,7 +935,7 @@ class Collection:
   A Collection can be used to associate data with the application of a Module.
   For example a collection can be used to collect activations across modules.
   Another common use case for collections is to track internal state.
-  For example, the running averages in BatchNorm can be stored in a collection.
+  For example, The running averages in BatchNorm can be stored in a collection.
 
   Attributes:
     state: the initial state by default an empty collection is created.
@@ -954,12 +945,12 @@ class Collection:
     if state is None:
       state = {}
     self.state = state
-    # The anchor is used to determine the prefix of the collection.
-    # This way we can create/nest collections inside modules.
+    # the anchor is used to determine the prefix of the collection.
+    # this way we can create/nest collections inside modules.
     self._anchor = _module_stack[-1] if _module_stack else None
 
     self._mutable = False
-    self._master_level = None
+    self._master = None
     self._root = None
 
   def as_dict(self):
@@ -978,7 +969,7 @@ class Collection:
     # pylint: disable=protected-access
     new_col = jax.tree_map(lambda x: x, self)  # clone the collection
     new_col._mutable = True
-    new_col._master_level = utils._trace_level(utils._current_trace())
+    new_col._master = utils._current_trace()
     try:
       yield new_col
     finally:
@@ -1010,20 +1001,22 @@ class Collection:
     if not self._mutable:
       raise ValueError('Collection is not mutable. Use the `mutate` method to'
                        ' create a mutable copy.')
-    # Use the Jax TraceMaster to determine if a Collection is modified from
+    # use the Jax TraceMaster to determine if a Collection is modified from
     # inside a nested jax transformation.
     # In this case, we throw an error because transforming a stateful function
     # is ill-defined (eg. what does vmap of BatchNorm do?).
     # TODO(jheek): Add doc guide on combining jax transforms and state.
     # TODO(jheek): Should some transformations be excempt from this error?
-    value_level = utils._level_of_value(value)
-    if value_level > self._master_level:
+    master = utils._tracer_of_value(value)
+    value_level = master.level if master else float('-inf')
+    state_level = self._master.level if self._master else float('-inf')
+    if value_level > state_level:
       raise ValueError('Stateful operations are not allowed when the Collection'
                        ' is created outside of the current Jax transformation')
 
-    # The root of a Collection is the first module scope that gets created
+    # the root of a Collection is the first module scope that gets created
     # inside the mutate scope of the Collection. By allowing only one unique
-    # root scope, we guarantee that state is not accidentally shared
+    # root scope we guarantee that state is not accidentally shared
     # between different models. When a user specifies an explicit name we can
     # distinguish models and a collection can have multiple roots.
     if frame == self._anchor:
@@ -1044,7 +1037,7 @@ class Collection:
     elif self._root != root:
       if self._root.name is None or root.name is None:
         # In the following examples, should the two calls to `StatefulModule` share state or not?
-        # Because it's ambiguous, we throw an error and require the user to explicitly separate state
+        # because it's ambiguous, we throw an error and require the user to explicitly separate state
         # by giving each instance a separate name, or to explicitly pass the same name
         # in order to share state.
         # with nn.statefull(state) as new_state:

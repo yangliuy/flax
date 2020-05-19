@@ -56,28 +56,20 @@ flags.DEFINE_integer(
 
 
 
-class CNN(nn.Module):
+def cnn(x):
   """A simple CNN model."""
-
-  def apply(self, x):
-    x = nn.Conv(features=32, kernel_size=(3, 3)).apply(x)
-    x = nn.relu(x)
-    x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = nn.Conv(features=64, kernel_size=(3, 3)).apply(x)
-    x = nn.relu(x)
-    x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = x.reshape((x.shape[0], -1))  # flatten
-    x = nn.Dense(features=256).apply(x)
-    x = nn.relu(x)
-    x = nn.Dense(features=10).apply(x)
-    x = nn.log_softmax(x)
-    return x
-
-
-def create_model(key):
-  _, initial_params = CNN.init_by_shape(key, [((1, 28, 28, 1), jnp.float32)])
-  model = nn.Model(CNN, initial_params)
-  return model
+  x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+  x = nn.relu(x)
+  x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+  x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+  x = nn.relu(x)
+  x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+  x = x.reshape((x.shape[0], -1))  # flatten
+  x = nn.Dense(features=256)(x)
+  x = nn.relu(x)
+  x = nn.Dense(features=10)(x)
+  x = nn.log_softmax(x)
+  return x
 
 
 def create_optimizer(model, learning_rate, beta):
@@ -108,8 +100,8 @@ def compute_metrics(logits, labels):
 @jax.jit
 def train_step(optimizer, batch):
   """Train for a single step."""
-  def loss_fn(model):
-    logits = model(batch['image'])
+  def loss_fn(params):
+    logits = nn.apply(cnn, params, batch['image'])
     loss = cross_entropy_loss(logits, batch['label'])
     return loss, logits
   grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -176,8 +168,9 @@ def train(train_ds, test_ds):
   batch_size = FLAGS.batch_size
   num_epochs = FLAGS.num_epochs
 
-  model = create_model(rng)
-  optimizer = create_optimizer(model, FLAGS.learning_rate, FLAGS.momentum)
+  params = nn.init(
+      cnn, rng, jnp.ones((1, 28, 28, 1), dtype=jnp.float32))
+  optimizer = create_optimizer(params, FLAGS.learning_rate, FLAGS.momentum)
 
   input_rng = onp.random.RandomState(0)
 
