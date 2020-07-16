@@ -48,6 +48,27 @@ def create_model(model_definition: Any,
   return flax.nn.Model(model_definition, params)
 
 
+def sequence_mask(lengths: jnp.ndarray, max_length: int) -> jnp.ndarray:
+  """Computes a boolean mask over sequence positions for each given length.
+
+  Example:
+  ```
+  sequence_mask([1, 2], 3)
+  [[True, False, False],
+   [True, True, False]]
+  ```
+
+  Args:
+    lengths: The length of each sequence. <int>[batch_size]
+    max_length: The width of the boolean mask. Must be >= max(lengths).
+
+  Returns:
+    A mask with shape: <bool>[lengths.size, max_length] indicating which
+    positions are valid for each sequence.
+  """
+  return jnp.arange(max_length) < jnp.expand_dims(lengths, 1)
+
+
 def word_dropout(inputs: jnp.ndarray,
                  rate: float,
                  unk_idx: int,
@@ -190,7 +211,8 @@ class LSTM(nn.Module):
         jax.random.PRNGKey(0), (batch_size,), hidden_size)
     _, outputs = flax.jax_utils.scan_in_dim(
         nn.LSTMCell.partial(name='lstm_cell'), carry, inputs, axis=1)
-    return outputs
+    final_states = outputs[jnp.arange(batch_size), jnp.maximum(0, lengths - 1), :]
+    return outputs, final_states
 
 
 class BidirectionalLSTM(nn.Module):
@@ -203,13 +225,16 @@ class BidirectionalLSTM(nn.Module):
     # pylint: disable=arguments-differ
     if hidden_size % 2 != 0:
       raise ValueError('Hidden size must be even.')
-    forward = LSTM(inputs, lengths, hidden_size // 2, name='forward_lstm')
+    forward, forward_final = LSTM(
+        inputs, lengths, hidden_size // 2, name='forward_lstm')
+    
     flipped = flip_and_roll_batch(inputs, lengths)
-    backward = LSTM(flipped, lengths, hidden_size // 2,
-                    name='backward_lstm')
+    backward, backward_final = LSTM(
+        flipped, lengths, hidden_size // 2, name='backward_lstm')
     backward = flip_and_roll_batch(backward, lengths)
     outputs = jnp.concatenate((forward, backward), -1)
-    return outputs
+    final_states = jnp.concatenate((forward_final, backward_final), -1)
+    return outputs, final_states
 
 
 class KeysOnlyMlpAttention(nn.Module):
@@ -294,7 +319,7 @@ class AttentionClassifier(nn.Module):
       encoded_inputs = nn.dropout(encoded_inputs, rate=dropout_rate)
 
     # Compute attention. attention.shape: <float32>[batch_size, seq_len].
-    mask = nlp.nn.sequence_mask(input_lengths, encoded_inputs.shape[1])
+    mask = sequence_mask(input_lengths, encoded_inputs.shape[1])
     attention = KeysOnlyMlpAttention(
         encoded_inputs,
         mask,

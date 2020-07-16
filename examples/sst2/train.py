@@ -39,9 +39,9 @@ from flax import nn
 import jax
 import jax.numpy as jnp
 
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 import tensorflow_datasets as tfds
-from tensorflow.compat.v2.io import gfile
+from tensorflow.io import gfile
 
 import input_pipeline
 import model as sst2_model
@@ -147,7 +147,7 @@ def train_step(optimizer: Any, inputs: jnp.ndarray, lengths: jnp.ndarray,
     loss = jnp.mean(binary_cross_entropy_loss(logits, labels))
 
     # L2 regularization
-    l2_params = jax.tree_leaves(model.params['lstm_classifier'])
+    l2_params = jax.tree_leaves(model.params)
     l2_weight = jnp.sum([jnp.sum(p ** 2) for p in l2_params])
     l2_penalty = l2_reg * l2_weight
 
@@ -237,6 +237,7 @@ def log(stats, epoch, train_metrics, valid_metrics):
   for metric, value in valid_metrics.items():
     stats['valid_' + metric].append(value)
 
+
 def train(
     model: nn.Model,
     learning_rate: float = None,
@@ -315,6 +316,7 @@ def main(argv):
   data_source = input_pipeline.SST2DataSource(min_freq=FLAGS.min_freq)
 
   # Create model.
+  
   model = sst2_model.create_model(
       FLAGS.seed,
       FLAGS.batch_size,
