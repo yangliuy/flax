@@ -26,7 +26,7 @@ For more detailed information, see README.
 # pylint: disable=import-error,too-many-locals,too-many-arguments
 
 import collections
-from typing import Any, Dict, Text, Tuple
+from typing import Any, Dict, Tuple
 
 from absl import app
 from absl import flags
@@ -243,12 +243,12 @@ def train(
     learning_rate: float = None,
     num_epochs: int = None,
     seed: int = None,
-    model_dir: Text = None,
+    model_dir: str = None,
     data_source: Any = None,
     batch_size: int = None,
     checkpoints_to_keep: int = None,
     l2_reg: float = None,
-) -> Tuple[Dict[Text, Any], nn.Model]:
+) -> Tuple[Dict[str, Any], nn.Model]:
   """Training loop.
 
   Args:
@@ -310,13 +310,11 @@ def main(argv):
   if not gfile.exists(FLAGS.model_dir):
     gfile.makedirs(FLAGS.model_dir)
 
-  tf.enable_v2_behavior()
-
   # Prepare data.
   data_source = input_pipeline.SST2DataSource(min_freq=FLAGS.min_freq)
 
   # Create model.
-  
+  shapes_and_types = 
   model = sst2_model.create_model(
       FLAGS.seed,
       FLAGS.batch_size,

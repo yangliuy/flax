@@ -192,11 +192,9 @@ class Embedding(nn.Module):
 
 
 @jax.vmap
-def flip_and_roll_batch(inputs: jnp.ndarray, lengths: jnp.ndarray) -> jnp.array:
-  """Flip and roll a batch for a reverse LSTM unroll."""
-  max_time = inputs.shape[0]
-  rolled_inputs = jnp.roll(inputs, max_time - lengths, axis=0)
-  return jnp.flip(rolled_inputs, axis=0)
+def flip_sequences(inputs: jnp.ndarray, lengths: jnp.ndarray) -> jnp.array:
+  """Flips a sequence of inputs along the time dimension."""
+  return jnp.flip(jnp.roll(inputs, inputs.shape[0] - lengths, axis=0), axis=0)
 
 
 class LSTM(nn.Module):
@@ -229,7 +227,7 @@ class BidirectionalLSTM(nn.Module):
     flipped = flip_and_roll_batch(inputs, lengths)
     backward, backward_final = LSTM(
         flipped, lengths, hidden_size // 2, name='backward_lstm')
-    backward = flip_and_roll_batch(backward, lengths)
+    backward = flip_sequences(backward, lengths)
     outputs = jnp.concatenate((forward, backward), -1)
     final_states = [forward_final, backward_final]
     return outputs, final_states
@@ -447,3 +445,23 @@ class TextClassifier(nn.Module):
     logits = self._classify(
         classifier, encoded_inputs, input_lengths, train=train)
     return logits
+    
+
+@functools.partial(jax.jit, static_argnums=(0, 1))
+def text_classifier_from_config(
+    config: Dict[str, Any], pretrained_embeddings: Optional[jnp.ndarray]):
+  """Helper function to construct a text classifier model from a config."""
+  with nn.stateful() as state:
+    embedder = embedder_from_config(
+        config, pretrained_embeddings=pretrained_embeddings)
+    encoder = encoder_from_config(config)
+    classifier = classifier_from_config(config)
+
+    model_definition = tcm.TextClassifier.partial(
+        embedder=embedder, encoder=encoder, classifier=classifier)
+    batch_size = config['batch_size']
+    shapes = (((batch_size, 1), jnp.int64), ((batch_size,), jnp.int64))
+    rng = jax.random.PRNGKey(config['seed'])
+    _, params = model_definition.init_by_shape(rng, shapes)
+    model = nn.Model(model_definition, params)
+  return model, state    
