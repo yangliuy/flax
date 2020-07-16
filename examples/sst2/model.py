@@ -11,20 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """LSTM classifier model for SST-2."""
 
 import functools
-from typing import Any, Callable, Optional, Sequence, Union, Tuple
+from typing import Any, Callable, Dict, Optional, Sequence, Union, Tuple
 
+import flax
 from flax import nn
-import flax_nlp as nlp
+import jax
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
 
 # pylint: disable=arguments-differ,too-many-arguments
-
 
 ShapeType = Tuple[int]
 ShapeAndType = Tuple[ShapeType, np.dtype]
@@ -35,11 +34,13 @@ def create_model(model_definition: Any,
                  shapes_and_types: Sequence[ShapeAndType],
                  model_kwargs: Dict[str, Any]) -> flax.nn.Model:
   """Helper function to instantiate a model.
+
   Args:
     model_definition: A Flax module to be instantiated.
     shapes_and_types: A sequence of (shape, dtype) tuples indicating the shapes
       and types of the inputs to the model.
     model_kwargs: A dictionary with keys/values to be passed to the model.
+
   Returns:
     The instantiated model with its parameters.
   """
@@ -201,10 +202,7 @@ def flip_and_roll_batch(inputs: jnp.ndarray, lengths: jnp.ndarray) -> jnp.array:
 class LSTM(nn.Module):
   """LSTM encoder."""
 
-  def apply(self,
-            inputs: jnp.ndarray,
-            lengths: jnp.ndarray,
-            hidden_size: int):
+  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray, hidden_size: int):
     # pylint: disable=unused-argument, arguments-differ
     # inputs.shape = <float32>[batch_size, seq_length, emb_size].
     # lengths.shape = <int64>[batch_size,]
@@ -213,16 +211,15 @@ class LSTM(nn.Module):
         jax.random.PRNGKey(0), (batch_size,), hidden_size)
     _, outputs = flax.jax_utils.scan_in_dim(
         nn.LSTMCell.partial(name='lstm_cell'), carry, inputs, axis=1)
-    final_states = outputs[jnp.arange(batch_size), jnp.maximum(0, lengths - 1), :]
+    final_states = outputs[jnp.arange(batch_size),
+                           jnp.maximum(0, lengths - 1), :]
     return outputs, final_states
 
 
 class BidirectionalLSTM(nn.Module):
   """Bidirectional LSTM encoder."""
 
-  def apply(self,
-            inputs: jnp.ndarray,
-            lengths: jnp.ndarray,
+  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray,
             hidden_size: int) -> jnp.ndarray:
     # pylint: disable=arguments-differ
     if hidden_size % 2 != 0:
@@ -234,7 +231,7 @@ class BidirectionalLSTM(nn.Module):
         flipped, lengths, hidden_size // 2, name='backward_lstm')
     backward = flip_and_roll_batch(backward, lengths)
     outputs = jnp.concatenate((forward, backward), -1)
-    final_states = jnp.concatenate((forward_final, backward_final), -1)
+    final_states = [forward_final, backward_final]
     return outputs, final_states
 
 
