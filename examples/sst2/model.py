@@ -200,7 +200,8 @@ def flip_sequences(inputs: jnp.ndarray, lengths: jnp.ndarray) -> jnp.array:
 class LSTM(nn.Module):
   """LSTM encoder."""
 
-  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray, hidden_size: int):
+  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray, hidden_size: int,
+            **lstm_cell_kwargs):
     # pylint: disable=unused-argument, arguments-differ
     # inputs.shape = <float32>[batch_size, seq_length, emb_size].
     # lengths.shape = <int64>[batch_size,]
@@ -208,7 +209,10 @@ class LSTM(nn.Module):
     carry = nn.LSTMCell.initialize_carry(
         jax.random.PRNGKey(0), (batch_size,), hidden_size)
     _, outputs = flax.jax_utils.scan_in_dim(
-        nn.LSTMCell.partial(name='lstm_cell'), carry, inputs, axis=1)
+        nn.LSTMCell.partial(name='lstm_cell', **lstm_cell_kwargs),
+        carry,
+        inputs,
+        axis=1)
     final_states = outputs[jnp.arange(batch_size),
                            jnp.maximum(0, lengths - 1), :]
     return outputs, final_states
@@ -217,16 +221,24 @@ class LSTM(nn.Module):
 class BidirectionalLSTM(nn.Module):
   """Bidirectional LSTM encoder."""
 
-  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray,
-            hidden_size: int) -> jnp.ndarray:
+  def apply(self, inputs: jnp.ndarray, lengths: jnp.ndarray, hidden_size: int,
+            **lstm_cell_kwargs) -> jnp.ndarray:
     # pylint: disable=arguments-differ
     if hidden_size % 2 != 0:
       raise ValueError('Hidden size must be even.')
     forward, forward_final = LSTM(
-        inputs, lengths, hidden_size // 2, name='forward_lstm')
-    flipped = flip_and_roll_batch(inputs, lengths)
+        inputs,
+        lengths,
+        hidden_size // 2,
+        name='forward_lstm',
+        **lstm_cell_kwargs)
+    flipped = flip_sequences(inputs, lengths)
     backward, backward_final = LSTM(
-        flipped, lengths, hidden_size // 2, name='backward_lstm')
+        flipped,
+        lengths,
+        hidden_size // 2,
+        name='backward_lstm',
+        **lstm_cell_kwargs)
     backward = flip_sequences(backward, lengths)
     outputs = jnp.concatenate((forward, backward), -1)
     final_states = [forward_final, backward_final]
@@ -445,23 +457,3 @@ class TextClassifier(nn.Module):
     logits = self._classify(
         classifier, encoded_inputs, input_lengths, train=train)
     return logits
-    
-
-@functools.partial(jax.jit, static_argnums=(0, 1))
-def text_classifier_from_config(
-    config: Dict[str, Any], pretrained_embeddings: Optional[jnp.ndarray]):
-  """Helper function to construct a text classifier model from a config."""
-  with nn.stateful() as state:
-    embedder = embedder_from_config(
-        config, pretrained_embeddings=pretrained_embeddings)
-    encoder = encoder_from_config(config)
-    classifier = classifier_from_config(config)
-
-    model_definition = tcm.TextClassifier.partial(
-        embedder=embedder, encoder=encoder, classifier=classifier)
-    batch_size = config['batch_size']
-    shapes = (((batch_size, 1), jnp.int64), ((batch_size,), jnp.int64))
-    rng = jax.random.PRNGKey(config['seed'])
-    _, params = model_definition.init_by_shape(rng, shapes)
-    model = nn.Model(model_definition, params)
-  return model, state    
