@@ -15,17 +15,19 @@
 """LSTM classifier model for SST-2."""
 
 import functools
-from typing import Any, Callable, Dict, Text
+from typing import Any, Callable, Optional, Sequence, Union, Tuple
 
-import flax
 from flax import nn
-import jax
-import jax.numpy as jnp
+import flax_nlp as nlp
 from jax import lax
-
+import jax.numpy as jnp
 import numpy as np
 
 # pylint: disable=arguments-differ,too-many-arguments
+
+
+ShapeType = Tuple[int]
+ShapeAndType = Tuple[ShapeType, np.dtype]
 
 
 @functools.partial(jax.jit, static_argnums=(0, 1, 2))
@@ -172,7 +174,7 @@ class Embedding(nn.Module):
     """
     if train and word_dropout_rate > 0.:
       assert unk_idx is not None, 'Provide unk_idx when using word_dropout.'
-      inputs = tcnn.word_dropout(inputs, word_dropout_rate, unk_idx=unk_idx)
+      inputs = word_dropout(inputs, word_dropout_rate, unk_idx=unk_idx)
 
     embedding_matrix = self.param('embedding', (num_embeddings, features),
                                   embedding_init)
@@ -227,7 +229,6 @@ class BidirectionalLSTM(nn.Module):
       raise ValueError('Hidden size must be even.')
     forward, forward_final = LSTM(
         inputs, lengths, hidden_size // 2, name='forward_lstm')
-    
     flipped = flip_and_roll_batch(inputs, lengths)
     backward, backward_final = LSTM(
         flipped, lengths, hidden_size // 2, name='backward_lstm')
@@ -449,4 +450,3 @@ class TextClassifier(nn.Module):
     logits = self._classify(
         classifier, encoded_inputs, input_lengths, train=train)
     return logits
-
